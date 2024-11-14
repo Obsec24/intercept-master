@@ -1,0 +1,6 @@
+__pycache__/
+*/__pycache__/
+*.log
+*.apk
+pinning/config/
+pinning/defaultpinning.py
