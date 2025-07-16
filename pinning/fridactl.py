@@ -22,7 +22,7 @@ HELPER_JSON_LOGGER = '/app/logging-master/agent/helper/log.py'
 log = importlib.util.spec_from_file_location("log", HELPER_JSON_LOGGER)
 log_module = importlib.util.module_from_spec(log)
 log.loader.exec_module(log_module)
-logger = log_module.init_logger(FILE_LOGS) 
+logger = log_module.init_logger(LOG_FILE) 
 
 #assert os.path.isfile(HELPER_JSON_LOGGER), '%s  is not a valid file or path to file' % HELPER_JSON_LOGGER
 #log = imp.load_source('log', HELPER_JSON_LOGGER)
