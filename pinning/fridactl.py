@@ -15,7 +15,7 @@ testing_label = sys.argv[3]
 version = sys.argv[4]
 
 LOG_FILE = '/app/logging/log/operation.privapp.log'
-FILENAME_PINNING_CASES = '/app/intercept/pinning/pinning_cases.js'
+FILENAME_PINNING_CASES = '/app/intercept-master/pinning/pinning_cases.js'
 HELPER_JSON_LOGGER = '/app/logging/agent/helper/log.py'
 
 # configure json logger
