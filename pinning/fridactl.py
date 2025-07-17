@@ -29,9 +29,18 @@ logger = log_module.init_logger(LOG_FILE)
 #logger = log.init_logger(LOG_FILE)
 
 # import adb and appt tools
+#TOOLS_FILE = '/app/scripts/tools.py'
+#assert os.path.isfile(TOOLS_FILE), '%s  is not a valid file or path to file' % TOOLS_FILE
+#tools = imp.load_source('tools', TOOLS_FILE)
+
 TOOLS_FILE = '/app/scripts/tools.py'
-assert os.path.isfile(TOOLS_FILE), '%s  is not a valid file or path to file' % TOOLS_FILE
-tools = imp.load_source('tools', TOOLS_FILE)
+assert os.path.isfile(TOOLS_FILE), '%s is not a valid file or path to file' % TOOLS_FILE
+
+spec = importlib.util.spec_from_file_location("tools", TOOLS_FILE)
+tools = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(tools)
+
+
 
 # init adb tools
 TOOLS_CONFIG = '/app/scripts/testing.config'
