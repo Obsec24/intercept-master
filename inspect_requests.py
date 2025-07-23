@@ -7,15 +7,19 @@ from mitmproxy import ctx
 from mitmproxy.proxy.protocol import TlsLayer
 from mitmproxy.exceptions import TlsProtocolException
 
-import imp
+import importlib
 
 dataf = "output.log"
 datap = "pinning.log"
 command = ""
-LOG_FILE = "/app/logging/log/operation.privapp.log"
+LOG_FILE = "/app/logging-master/log/operation.privapp.log"
 
-log = imp.load_source('log', '/app/logging/agent/helper/log.py')
-logger =  log.init_logger(LOG_FILE)
+#log = imp.load_source('log', '/app/logging/agent/helper/log.py')
+#logger =  log.init_logger(LOG_FILE)
+log = importlib.util.spec_from_file_location("log", HELPER_JSON_LOGGER)
+log_module = importlib.util.module_from_spec(log)
+log.loader.exec_module(log_module)
+logger = log_module.init_logger(LOG_FILE) 
 
 # TLS layer wrapper to detect failed connections.
 class TlsDetectFail(TlsLayer):
