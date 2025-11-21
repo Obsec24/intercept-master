@@ -2,125 +2,111 @@
 
 import pickle
 import subprocess as sub
+import importlib.util
 
-from mitmproxy import ctx
-from mitmproxy.proxy.protocol import TlsLayer
-from mitmproxy.exceptions import TlsProtocolException
-
-import importlib
+from mitmproxy import http, ctx
 
 dataf = "output.log"
 datap = "pinning.log"
 command = ""
+
 LOG_FILE = "/app/logging/log/operation.privapp.log"
 HELPER_JSON_LOGGER = '/app/logging-master/agent/helper/log.py'
 
-#log = imp.load_source('log', '/app/logging/agent/helper/log.py')
-#logger =  log.init_logger(LOG_FILE)
-log = importlib.util.spec_from_file_location("log", HELPER_JSON_LOGGER)
-log_module = importlib.util.module_from_spec(log)
-log.loader.exec_module(log_module)
-logger = log_module.init_logger(LOG_FILE) 
+# Load logger properly
+spec = importlib.util.spec_from_file_location("log", HELPER_JSON_LOGGER)
+log_module = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(log_module)
+logger = log_module.init_logger(LOG_FILE)
 
-# TLS layer wrapper to detect failed connections.
-class TlsDetectFail(TlsLayer):
+# ------------ UTILS  ------------
 
-    def _establish_tls_with_client(self):
-        log = False
-        try:
-            log = valid_conn(self.client_conn.address[1])
-            super()._establish_tls_with_client()
-        except TlsProtocolException as e:
-            addr, sni = self.server_conn.ip_address, self.server_conn.sni
-            if sni is not None:
-                #It saves pinning that potentially belong to the app (it is necessary to fix a race condition)
-                log_data((False, sni, addr), datap)
-            if log:
-                #addr, sni = self.server_conn.ip_address, self.server_conn.sni
-                log_data((False, sni, addr), dataf)
-            raise e
-
-class Interceptor:
-
-    # When the addon is loaded adds a new option
-    def load(self, loader):
-        loader.add_option(
-                name = "app",
-                typespec = str,
-                default = "com.android.chrome",
-                help = "App to be examined",
-        )
-
-    # Configure the command when the app
-    # option is modified.
-    def configure(self, updated):
-        global command
-        if ctx.options.app:
-            app = ctx.options.app
-            command = "adb shell 'su -c netstat -utpn' | grep " + validate(app) + " | sort -u | tr -s ' ' | cut -d ' ' -f 4"
-
-    # Replace next layer in client TLS
-    # Handshake to detect failures.
-    def next_layer(self, nlayer):
-        if isinstance(nlayer, TlsLayer) and nlayer._client_tls:
-            nlayer.__class__ = TlsDetectFail
-
-    # For each request checks if it belongs to our app
-    # and logs it if neccessary.
-    def request(self, flow):
-        port, host = conn_data(flow.client_conn, flow.request)
-        if valid_conn(port):
-            log_data((True, host, flow.request), dataf)
-
-###########################################################################################################################
-#                                                                                                                         #
-#                                       Utils                                                                             #
-#                                                                                                                         #
-###########################################################################################################################
-
-# Logs a an entry to a selected datafile
 def log_data(entry, dataf):
     with open(dataf, "ab") as f:
         pickle.dump(entry, f)
 
-# Checks if connection is from the specified app
-def valid_conn(port):
-    nets = call_sh(command).splitlines()
-    ports = app_ports(nets)
-    #if not ports:
-       # logger.warning("High number of empty app connections: check if adb connection has root permissions", extra={'apk': ctx.options.app})
-    return port in ports
-
-# Returns client port and server domain
-# of a HTTP connection.
-def conn_data(client, req):
-    port = client.address[1]
-    host = get_host(client, req)
-    return (port, host)
-
-# Gets host from SNI or header information.
-def get_host(client, req):
-    if client.sni:
-        return client.sni
-    elif "Host" in req.headers:
-        return req.headers["Host"]
-    elif "host" in req.headers:
-        return req.headers["host"]
-    else:
-        return "unknown"
-
-# Returns a list of every port of a connection
-# of the selected app
-def app_ports(nets):
-    return [int(l.split(":")[-1]) for l in nets]
-
-# Remove all characters in the app package name that are not dots or alphanumeric.
-# Important to avoid vulnerabilities.
 def validate(app):
     return "".join([c for c in app if c == "." or c.isalnum()])
 
-# Executes a command in a shell and returns its output
 def call_sh(command):
-    return sub.run(command, shell=True, stdout=sub.PIPE, stderr=sub.PIPE).stdout.decode("utf-8")
+    return sub.run(command, shell=True, stdout=sub.PIPE,
+                   stderr=sub.PIPE).stdout.decode("utf-8")
+
+def app_ports(nets):
+    ports = []
+    for l in nets:
+        try:
+            ports.append(int(l.split(":")[-1]))
+        except:
+            pass
+    return ports
+
+def valid_conn(port):
+    # -------------- MODIFICACIÓN #1 -----------------
+    # Si app=ALL, aceptar todos los puertos y capturar TODO el tráfico
+    if ctx.options.app == "ALL":
+        return True
+    # ------------------------------------------------
+
+    nets = call_sh(command).splitlines()
+    ports = app_ports(nets)
+    return port in ports
+
+def get_host(flow):
+    if flow.server_conn.sni:
+        return flow.server_conn.sni
+    return flow.request.pretty_host
+
+# ------------ MAIN ADDON ------------
+
+class Interceptor:
+
+    def load(self, loader):
+        loader.add_option(
+            name="app",
+            typespec=str,
+            default="com.android.chrome",
+            help="App to inspect"
+        )
+
+    def configure(self, updated):
+        global command
+
+        # -------------- MODIFICACIÓN #2 -----------------
+        if ctx.options.app == "ALL":
+            # No filtrar por proceso, obtenemos TODOS los puertos
+            command = "adb shell 'su -c netstat -utpn' | tr -s ' ' | cut -d ' ' -f 4"
+            return
+        # ------------------------------------------------
+
+        if ctx.options.app:
+            app = ctx.options.app
+            command = (
+                "adb shell 'su -c netstat -utpn' | grep " +
+                validate(app) +
+                " | tr -s ' ' | cut -d ' ' -f 4"
+            )
+
+    # HTTP requests
+    def request(self, flow: http.HTTPFlow):
+        port = flow.client_conn.address[1]
+        host = get_host(flow)
+
+        if valid_conn(port):
+            log_data((True, host, flow.request), dataf)
+
+    # TLS handshake errors (pinning or invalid cert)
+    def tls_error(self, flow):
+        sni = flow.server_conn.sni or "unknown"
+        addr = flow.server_conn.address
+
+        # log pinning always
+        log_data((False, sni, addr), datap)
+
+        port = flow.client_conn.address[1]
+        if valid_conn(port):
+            log_data((False, sni, addr), dataf)
+
 
 addons = [Interceptor()]
+
