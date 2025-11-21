@@ -6,8 +6,8 @@ import importlib.util
 
 from mitmproxy import http, ctx
 
-dataf = "output.log"
-datap = "pinning.log"
+dataf = "/app/intercept-master/output.log"
+datap = "/app/intercept-master/pinning.log"
 command = ""
 
 LOG_FILE = "/app/logging/log/operation.privapp.log"
