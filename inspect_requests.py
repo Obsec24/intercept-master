@@ -42,7 +42,6 @@ def app_ports(nets):
     return ports
 
 def valid_conn(port):
-    # Si app=ALL capturar TODO
     if ctx.options.app == "ALL":
         return True
 
@@ -89,47 +88,34 @@ class Interceptor:
 
         if valid_conn(port):
 
-            # ----- SERIALIZACIÓN SEGURA -----
+            # Mantenemos el objeto request original
             req_obj = (
                 True,
                 host,
-                {
-                    "content": flow.request.content,
-                    "path": flow.request.path,
-                    "url": flow.request.pretty_url,
-                    "host": host,
-                    "port": port,
-                    "method": flow.request.method,
-                    "headers": dict(flow.request.headers)
-                }
+                flow.request       # <- OBJETO NATIVO COMPLETO
             )
-            # --------------------------------
 
             log_data(req_obj, dataf)
 
-    # TLS handshake errors (pinning or invalid cert)
+    # TLS handshake errors
     def tls_error(self, flow):
         sni = flow.server_conn.sni or "unknown"
         addr = flow.server_conn.address
 
-        # LOG para archivo pinning.log
         log_data((False, sni, addr), datap)
 
         port = flow.client_conn.address[1]
         if valid_conn(port):
 
-            # ----- SERIALIZACIÓN SEGURA PARA PINNING -----
+            # No cambiamos nada: analyzer lo espera así
             req_obj = (
                 False,
                 sni,
-                {
-                    "host": sni,
-                    "port": addr[1]
-                }
+                addr
             )
-            # ---------------------------------------------
 
             log_data(req_obj, dataf)
 
 
 addons = [Interceptor()]
+
