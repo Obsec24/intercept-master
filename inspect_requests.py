@@ -42,11 +42,9 @@ def app_ports(nets):
     return ports
 
 def valid_conn(port):
-    # -------------- MODIFICACIÓN #1 -----------------
-    # Si app=ALL, aceptar todos los puertos y capturar TODO el tráfico
+    # Si app=ALL capturar TODO
     if ctx.options.app == "ALL":
         return True
-    # ------------------------------------------------
 
     nets = call_sh(command).splitlines()
     ports = app_ports(nets)
@@ -72,12 +70,9 @@ class Interceptor:
     def configure(self, updated):
         global command
 
-        # -------------- MODIFICACIÓN #2 -----------------
         if ctx.options.app == "ALL":
-            # No filtrar por proceso, obtenemos TODOS los puertos
             command = "adb shell 'su -c netstat -utpn' | tr -s ' ' | cut -d ' ' -f 4"
             return
-        # ------------------------------------------------
 
         if ctx.options.app:
             app = ctx.options.app
@@ -93,20 +88,48 @@ class Interceptor:
         host = get_host(flow)
 
         if valid_conn(port):
-            log_data((True, host, flow.request), dataf)
+
+            # ----- SERIALIZACIÓN SEGURA -----
+            req_obj = (
+                True,
+                host,
+                {
+                    "content": flow.request.content,
+                    "path": flow.request.path,
+                    "url": flow.request.pretty_url,
+                    "host": host,
+                    "port": port,
+                    "method": flow.request.method,
+                    "headers": dict(flow.request.headers)
+                }
+            )
+            # --------------------------------
+
+            log_data(req_obj, dataf)
 
     # TLS handshake errors (pinning or invalid cert)
     def tls_error(self, flow):
         sni = flow.server_conn.sni or "unknown"
         addr = flow.server_conn.address
 
-        # log pinning always
+        # LOG para archivo pinning.log
         log_data((False, sni, addr), datap)
 
         port = flow.client_conn.address[1]
         if valid_conn(port):
-            log_data((False, sni, addr), dataf)
+
+            # ----- SERIALIZACIÓN SEGURA PARA PINNING -----
+            req_obj = (
+                False,
+                sni,
+                {
+                    "host": sni,
+                    "port": addr[1]
+                }
+            )
+            # ---------------------------------------------
+
+            log_data(req_obj, dataf)
 
 
 addons = [Interceptor()]
-
